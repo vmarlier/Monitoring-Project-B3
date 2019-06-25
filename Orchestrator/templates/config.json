@@ -1,0 +1,11 @@
+{
+    "host": "http://192.168.2.10:8001/metrics",
+    "refresh": {
+        "unit" : "s",
+        "time" : 20
+    },
+    "disks": [
+        { "path" : "/" },
+        { "path" : "" }
+    ]
+}

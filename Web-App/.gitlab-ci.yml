@@ -1,0 +1,72 @@
+image: docker:latest
+services:
+  - docker:dind
+
+stages:
+  - build
+  - deploy
+
+build-dev:
+  image: vamarlier/awscli-on-docker-sbuild
+  stage: build
+  only:
+    - "dev"
+  script:
+    - $(aws ecr get-login --no-include-email --region eu-west-1)
+    - docker build -t $DOCKER_REGISTRY/monitoring/web-app/dev:$CI_COMMIT_SHA -f Dockerfile-dev .
+    - docker tag $DOCKER_REGISTRY/monitoring/web-app/dev:$CI_COMMIT_SHA $DOCKER_REGISTRY/monitoring/web-app/dev
+    - docker push $DOCKER_REGISTRY/monitoring/web-app/dev
+
+build-prod:
+  image: vamarlier/awscli-on-docker-sbuild
+  stage: build
+  only:
+    - "master"
+  script:
+    - $(aws ecr get-login --no-include-email --region eu-west-1)
+    - docker build -t $DOCKER_REGISTRY/monitoring/web-app:$CI_COMMIT_SHA -f Dockerfile .
+    - docker tag $DOCKER_REGISTRY/monitoring/web-app:$CI_COMMIT_SHA $DOCKER_REGISTRY/monitoring/web-app
+    - docker push $DOCKER_REGISTRY/monitoring/web-app
+
+deploy-dev:
+  image: vamarlier/awscli-on-debian-sdeploy
+  stage: deploy
+  only:
+    - "dev"
+  script:
+  ## prepare for scp and ssh
+    - apt-get update
+    - apt-get -yy install openssh-client sudo
+    - mkdir ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -t rsa $IP_TARGET_HOST >> ~/.ssh/known_hosts
+    - echo "$SSH_PRIVATE" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - chmod 644 ~/.ssh/known_hosts
+    ## login to remote docker registry
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "$(aws ecr get-login --no-include-email --region eu-west-1)"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker pull $DOCKER_REGISTRY/monitoring/web-app/dev"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker stop monitoring-web-app-dev && sudo docker rm monitoring-web-app-dev"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker run --name monitoring-web-app-dev -p 8802:8802 --link mongodb-dev:mongo --network mongodb_default -d --restart=on-failure $DOCKER_REGISTRY/monitoring/web-app/dev"
+
+deploy-prod:
+  image: vamarlier/awscli-on-debian-sdeploy
+  stage: deploy
+  only:
+    - "master"
+  script:
+  ## prepare for scp and ssh
+    - apt-get update
+    - apt-get -yy install openssh-client sudo
+    - mkdir ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -t rsa $IP_TARGET_HOST >> ~/.ssh/known_hosts
+    - echo "$SSH_PRIVATE" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - chmod 644 ~/.ssh/known_hosts
+    ## login to remote docker registry
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "$(aws ecr get-login --no-include-email --region eu-west-1)"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker pull $DOCKER_REGISTRY/monitoring/web-app"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker stop monitoring-web-app-prod && sudo docker rm monitoring-web-app-prod"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker run --name monitoring-web-app-prod -p 8081:8081 --link mongodb-prod:mongo --network mongodb_default -d --restart=on-failure $DOCKER_REGISTRY/monitoring/web-app"
+

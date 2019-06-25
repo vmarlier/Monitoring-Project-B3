@@ -1,0 +1,72 @@
+image: docker:latest
+services: 
+  - docker:dind
+
+stages:
+  - build
+  - deploy
+
+build-dev:
+  image: vamarlier/awscli-on-docker-sbuild
+  stage: build
+  only:
+    - "dev"
+  script:
+    - $(aws ecr get-login --no-include-email --region eu-west-1)
+    - docker build -t $DOCKER_REGISTRY/monitoring/agent/dev:$CI_COMMIT_SHA -f Dockerfile-dev .
+    - docker tag $DOCKER_REGISTRY/monitoring/agent/dev:$CI_COMMIT_SHA $DOCKER_REGISTRY/monitoring/agent/dev
+    - docker push $DOCKER_REGISTRY/monitoring/agent/dev
+
+build-prod:
+  image: vamarlier/awscli-on-docker-sbuild
+  stage: build
+  only:
+    - "master"
+  script:
+    - $(aws ecr get-login --no-include-email --region eu-west-1)
+    - docker build -t $DOCKER_REGISTRY/monitoring/agent:$CI_COMMIT_SHA -f Dockerfile .
+    - docker tag $DOCKER_REGISTRY/monitoring/agent:$CI_COMMIT_SHA $DOCKER_REGISTRY/monitoring/agent
+    - docker push $DOCKER_REGISTRY/monitoring/agent
+
+deploy-dev:
+  image: vamarlier/awscli-on-debian-sdeploy
+  stage: deploy
+  only:
+    - "dev"
+  script:
+  ## prepare for scp and ssh
+    - apt-get update
+    - apt-get -yy install openssh-client sudo
+    - mkdir ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -t rsa $IP_TARGET_HOST >> ~/.ssh/known_hosts
+    - echo "$SSH_PRIVATE" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - chmod 644 ~/.ssh/known_hosts
+  ## login to remote docker registry
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "$(aws ecr get-login --no-include-email --region eu-west-1)"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker pull $DOCKER_REGISTRY/monitoring/agent/dev"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker stop monitoring-agent-dev && sudo docker rm monitoring-agent-dev"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker run --name monitoring-agent-dev --env HOSTNAME=$IP_TARGET_HOST -p 8002:8002 -v /etc/group:/etc/group -v /etc/passwd:/etc/passwd -v /srv/agent/conf-ssh-dev:/opt/agent/configs -v /opt/monitoring/agent:/opt/agent/scripts -v /proc:/proc -d --restart=on-failure $DOCKER_REGISTRY/monitoring/agent/dev"
+
+
+deploy-prod:
+  image: vamarlier/awscli-on-debian-sdeploy
+  stage: deploy
+  only:
+    - "master"
+  script:
+  ## prepare for scp and ssh
+    - apt-get update
+    - apt-get -yy install openssh-client sudo
+    - mkdir ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -t rsa $IP_TARGET_HOST >> ~/.ssh/known_hosts
+    - echo "$SSH_PRIVATE" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - chmod 644 ~/.ssh/known_hosts
+  ## login to remote docker registry
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "$(aws ecr get-login --no-include-email --region eu-west-1)"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker pull $DOCKER_REGISTRY/monitoring/agent"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker stop monitoring-agent-prod && sudo docker rm monitoring-agent-prod"
+    - sudo -u root ssh -i ~/.ssh/id_rsa dock@$IP_TARGET_HOST "docker run --name monitoring-agent-prod --env HOSTNAME=$IP_TARGET_HOST -p 8001:8001 -v /etc/group:/etc/group -v /etc/passwd:/etc/passwd -v /srv/agent/conf-ssh-prod:/opt/agent/configs -v /opt/monitoring/agent:/opt/agent/scripts -v /proc:/proc -d --restart=on-failure $DOCKER_REGISTRY/monitoring/agent"

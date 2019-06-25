@@ -1,0 +1,17 @@
+FROM golang:1.12-stretch
+MAINTAINER <valentin.marlier@gmail.com>
+
+WORKDIR /opt/agent
+
+COPY . .
+COPY go.mod .
+
+RUN mkdir configs
+
+# allow golang to use modules
+RUN export GO111MODULE=on 
+
+RUN go build -o cmd/monitoring-agent cmd/main.go
+
+EXPOSE 8001
+CMD cmd/monitoring-agent 8001

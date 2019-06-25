@@ -1,0 +1,5 @@
+Dockerfile
+docker*
+myapp/*/node_modules
+myapp/*/*.log
+node_modules

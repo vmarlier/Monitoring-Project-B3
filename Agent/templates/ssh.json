@@ -1,0 +1,6 @@
+{
+    "user": "kill",
+    "host": "89.234.183.248",
+    "id_rsa": "./configs/id_rsa",
+    "script": "./path/on/host/not/container/kill.sh"
+}

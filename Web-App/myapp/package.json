@@ -1,0 +1,16 @@
+{
+  "name": "web-app",
+  "version": "1.0.0",
+  "description": "Monitoring web application",
+  "author": "Naomi Paulmin <naomi.paulmin@ynov.com>",
+  "main": "index.js",
+  "scripts": {
+    "install": "./backend/build.sh && ./frontend/build.sh",
+    "start": "node backend/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.cloud-opsme.ga/monitoring/web-app.git"
+  },
+  "license": "ISC"
+}
