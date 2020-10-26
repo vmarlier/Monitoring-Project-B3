@@ -1,1 +1,0 @@
-cd frontend && npm ci && node ./build/build.js
